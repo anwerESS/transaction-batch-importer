@@ -1,0 +1,47 @@
+# Nom logique de l'application, visible dans les logs Spring Boot.
+spring:
+  application:
+    name: transaction-batch-importer
+
+  datasource:
+    # Base H2 en memoire : elle est creee au demarrage et perdue a l'arret de l'application.
+    url: jdbc:h2:mem:batchdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      # Console web H2 utile pour inspecter les tables applicatives et les tables metadata Spring Batch.
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      # Hibernate cree ou met a jour les tables applicatives, comme transactions, pour ce projet d'apprentissage.
+      ddl-auto: update
+    # Affiche les requetes SQL JPA dans les logs pour comprendre ce que fait le writer.
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+
+  batch:
+    jdbc:
+      # Spring Batch initialise automatiquement ses tables techniques BATCH_* dans H2.
+      initialize-schema: always
+    job:
+      # Le job ne demarre pas tout seul au lancement de l'application ; il est lance via l'endpoint REST.
+      enabled: false
+
+server:
+  # Port HTTP local de l'API REST.
+  port: 8080
+
+logging:
+  level:
+    # Logs SQL Hibernate.
+    org.hibernate.SQL: DEBUG
+    # Logs des valeurs bindees dans les requetes preparees Hibernate 6.
+    org.hibernate.orm.jdbc.bind: TRACE

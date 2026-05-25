@@ -1,0 +1,58 @@
+package com.example.transactionbatchimporter.config;
+
+import com.example.transactionbatchimporter.dto.TransactionCsvDto;
+import com.example.transactionbatchimporter.entity.TransactionEntity;
+import org.springframework.batch.core.ChunkListener;
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.JobExecutionListener;
+import org.springframework.batch.core.Step;
+import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.item.ItemProcessor;
+import org.springframework.batch.item.database.JpaItemWriter;
+import org.springframework.batch.item.file.FlatFileItemReader;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.transaction.PlatformTransactionManager;
+
+@Configuration
+public class TransactionImportJobConfig {
+
+	// Declare le job Spring Batch responsable de l'import des transactions.
+	@Bean
+	public Job importTransactionsJob(
+			JobRepository jobRepository,
+			Step importTransactionsStep,
+			JobExecutionListener jobCompletionNotificationListener) {
+		// Le job execute la step d'import et notifie le listener en fin d'execution.
+		return new JobBuilder("importTransactionsJob", jobRepository)
+				.listener(jobCompletionNotificationListener)
+				.start(importTransactionsStep)
+				.build();
+	}
+
+	// Declare l'etape qui lit le CSV, transforme les lignes et persiste les transactions.
+	@Bean
+	public Step importTransactionsStep(
+			JobRepository jobRepository,
+			PlatformTransactionManager transactionManager,
+			FlatFileItemReader<TransactionCsvDto> transactionCsvItemReader,
+			ItemProcessor<TransactionCsvDto, TransactionEntity> transactionItemProcessor,
+			JpaItemWriter<TransactionEntity> transactionJpaItemWriter,
+			ChunkListener chunkProgressListener) {
+		// Spring Batch lit, traite et ecrit les donnees par paquets de 10 lignes CSV.
+		return new StepBuilder("importTransactionsStep", jobRepository)
+				// Definit le type lu depuis le CSV et le type ecrit en base.
+				.<TransactionCsvDto, TransactionEntity>chunk(10, transactionManager)
+				// Lit les transactions depuis le fichier CSV.
+				.reader(transactionCsvItemReader)
+				// Transforme chaque DTO CSV en entite JPA.
+				.processor(transactionItemProcessor)
+				// Enregistre les entites transformees en base de donnees.
+				.writer(transactionJpaItemWriter)
+				// Suit l'avancement de chaque chunk pendant l'import.
+				.listener(chunkProgressListener)
+				.build();
+	}
+}
