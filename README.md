@@ -1,13 +1,15 @@
 # transaction-batch-importer
 
-Learning project for building a first Spring Batch application with Spring Boot 3.5 and Java 17.
+Learning project for building a Spring Batch application with Spring Boot 3.5 and Java 17.
 
-The application imports transaction records from a CSV file, validates and transforms each line, then persists accepted transactions into an in-memory H2 database.
+The application validates a transaction CSV file, imports accepted transactions into an in-memory H2 database, generates a text report, then archives the processed input file.
 
 ## Spring Batch Concepts Covered
 
 - `Job`: global batch workflow named `importTransactionsJob`.
-- `Step`: processing phase named `importTransactionsStep`.
+- Multi-step job flow: validate file, import transactions, generate report, archive input.
+- `Tasklet`: used for file validation, report generation, and file archiving.
+- Chunk-oriented `Step`: processing phase named `importTransactionsStep`.
 - `FlatFileItemReader`: reads transactions from a CSV resource.
 - `ItemProcessor`: validates business rules and converts DTOs into JPA entities.
 - `JpaItemWriter`: writes entities into the database inside chunk transactions.
@@ -30,17 +32,52 @@ BatchJobController
 Async JobLauncher -> importTransactionsJob
         |
         v
+validateInputFileStep (tasklet)
+        |
+        v
 importTransactionsStep (chunk size: 10)
         |
         +--> FlatFileItemReader<TransactionCsvDto>
-        |        reads classpath:input/transactions.csv
+        |        reads app.transaction-import.input-directory/transactions.csv
         |
         +--> TransactionItemProcessor
         |        validates and maps CSV data to TransactionEntity
         |
         +--> JpaItemWriter<TransactionEntity>
                  persists rows into H2 table transactions
+        |
+        v
+generateImportReportStep (tasklet)
+        |
+        v
+archiveInputFileStep (tasklet)
 ```
+
+## Job Flow
+
+`importTransactionsJob` runs four steps in order:
+
+1. `validateInputFileStep`
+   Checks that the input file exists, is not empty, has a `.csv` extension, and starts with this exact header:
+
+   ```csv
+   transactionId,accountNumber,amount,currency,type,transactionDate
+   ```
+
+2. `importTransactionsStep`
+   Keeps the existing chunk-oriented import:
+
+   ```text
+   FlatFileItemReader<TransactionCsvDto>
+       -> TransactionItemProcessor
+       -> JpaItemWriter<TransactionEntity>
+   ```
+
+3. `generateImportReportStep`
+   Writes a text report with the job execution id, job name, import status, start time, end time, read count, write count, skip count, and rollback count.
+
+4. `archiveInputFileStep`
+   Moves the processed CSV file to the archive directory after the previous steps complete successfully.
 
 ## Technical Stack
 
@@ -71,6 +108,16 @@ Automatic job execution is disabled with:
 ```yaml
 spring.batch.job.enabled: false
 ```
+
+Default file locations:
+
+```yaml
+app.transaction-import.input-directory: src/main/resources/input
+app.transaction-import.archive-directory: target/archive
+app.transaction-import.report-directory: target/import-reports
+```
+
+After a successful import, `transactions.csv` is moved out of the input directory. The sample backup file `src/main/resources/input/transactions.csv.backup` can be used to restore the demo input.
 
 ## H2 Console
 
@@ -176,6 +223,35 @@ TXN-004,ACC-1004,30.00,EUR,DEBIT,2026-05-23
 The provided sample file contains 30 transaction rows. With the configured chunk size of 10,
 the import runs in 3 chunks.
 
+## Generated Report And Archive
+
+After a successful import, the report is written to:
+
+```text
+target/import-reports/transaction-import-report-{jobExecutionId}.txt
+```
+
+Example:
+
+```text
+Transaction Import Report
+jobExecutionId=1
+jobName=importTransactionsJob
+status=COMPLETED
+startTime=2026-05-25T14:30:00.010
+endTime=2026-05-25T14:30:08.120
+readCount=30
+writeCount=30
+skipCount=0
+rollbackCount=0
+```
+
+The processed CSV file is archived to:
+
+```text
+target/archive/transactions-job-{jobExecutionId}-{timestamp}.csv
+```
+
 ## Validation Rules
 
 The project uses two validation levels:
@@ -196,8 +272,6 @@ The project uses two validation levels:
 
 ## Future Improvements
 
-- Multiple steps.
 - Skip and retry policies.
 - Rejected records table.
-- Report generation.
-- File archiving.
+- External file upload endpoint.

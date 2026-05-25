@@ -45,3 +45,12 @@ logging:
     org.hibernate.SQL: DEBUG
     # Logs des valeurs bindees dans les requetes preparees Hibernate 6.
     org.hibernate.orm.jdbc.bind: TRACE
+
+app:
+  transaction-import:
+    # Dossier ou le job cherche le fichier CSV a importer.
+    input-directory: src/main/resources/input
+    # Dossier ou le fichier CSV est deplace apres un traitement reussi.
+    archive-directory: target/archive
+    # Dossier ou la step de rapport ecrit le recapitulatif texte de l'import.
+    report-directory: target/import-reports

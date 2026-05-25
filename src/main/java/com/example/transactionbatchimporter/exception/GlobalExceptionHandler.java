@@ -39,6 +39,18 @@ public class GlobalExceptionHandler {
 				List.of());
 	}
 
+	@ExceptionHandler(InvalidInputFileException.class)
+	public ResponseEntity<ApiErrorResponse> handleInvalidInputFileException(
+			InvalidInputFileException ex,
+			HttpServletRequest request) {
+		return buildResponse(
+				HttpStatus.UNPROCESSABLE_ENTITY,
+				"Invalid input file",
+				ex.getMessage(),
+				request.getRequestURI(),
+				List.of());
+	}
+
 	@ExceptionHandler(BatchImportException.class)
 	public ResponseEntity<ApiErrorResponse> handleBatchImportException(
 			BatchImportException ex,

@@ -1,5 +1,8 @@
 package com.example.transactionbatchimporter.config;
 
+import com.example.transactionbatchimporter.batch.tasklet.ArchiveInputFileTasklet;
+import com.example.transactionbatchimporter.batch.tasklet.GenerateImportReportTasklet;
+import com.example.transactionbatchimporter.batch.tasklet.ValidateInputFileTasklet;
 import com.example.transactionbatchimporter.dto.TransactionCsvDto;
 import com.example.transactionbatchimporter.entity.TransactionEntity;
 import org.springframework.batch.core.ChunkListener;
@@ -23,12 +26,29 @@ public class TransactionImportJobConfig {
 	@Bean
 	public Job importTransactionsJob(
 			JobRepository jobRepository,
+			Step validateInputFileStep,
 			Step importTransactionsStep,
+			Step generateImportReportStep,
+			Step archiveInputFileStep,
 			JobExecutionListener jobCompletionNotificationListener) {
-		// Le job execute la step d'import et notifie le listener en fin d'execution.
+		// Le job execute les steps dans l'ordre et s'arrete automatiquement si une step echoue.
 		return new JobBuilder("importTransactionsJob", jobRepository)
 				.listener(jobCompletionNotificationListener)
-				.start(importTransactionsStep)
+				.start(validateInputFileStep)
+				.next(importTransactionsStep)
+				.next(generateImportReportStep)
+				.next(archiveInputFileStep)
+				.build();
+	}
+
+	// Verifie le fichier CSV avant de demarrer la lecture chunk-oriented.
+	@Bean
+	public Step validateInputFileStep(
+			JobRepository jobRepository,
+			PlatformTransactionManager transactionManager,
+			ValidateInputFileTasklet validateInputFileTasklet) {
+		return new StepBuilder("validateInputFileStep", jobRepository)
+				.tasklet(validateInputFileTasklet, transactionManager)
 				.build();
 	}
 
@@ -53,6 +73,28 @@ public class TransactionImportJobConfig {
 				.writer(transactionJpaItemWriter)
 				// Suit l'avancement de chaque chunk pendant l'import.
 				.listener(chunkProgressListener)
+				.build();
+	}
+
+	// Genere un rapport texte avec les metadonnees de l'execution et les compteurs d'import.
+	@Bean
+	public Step generateImportReportStep(
+			JobRepository jobRepository,
+			PlatformTransactionManager transactionManager,
+			GenerateImportReportTasklet generateImportReportTasklet) {
+		return new StepBuilder("generateImportReportStep", jobRepository)
+				.tasklet(generateImportReportTasklet, transactionManager)
+				.build();
+	}
+
+	// Deplace le fichier traite vers le dossier d'archive apres un import reussi.
+	@Bean
+	public Step archiveInputFileStep(
+			JobRepository jobRepository,
+			PlatformTransactionManager transactionManager,
+			ArchiveInputFileTasklet archiveInputFileTasklet) {
+		return new StepBuilder("archiveInputFileStep", jobRepository)
+				.tasklet(archiveInputFileTasklet, transactionManager)
 				.build();
 	}
 }

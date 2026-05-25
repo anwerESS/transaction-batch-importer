@@ -1,12 +1,13 @@
 package com.example.transactionbatchimporter.batch.reader;
 
+import com.example.transactionbatchimporter.batch.file.TransactionInputFileResolver;
 import com.example.transactionbatchimporter.dto.TransactionCsvDto;
 import com.example.transactionbatchimporter.exception.InvalidTransactionException;
 import java.math.BigDecimal;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.file.FlatFileItemReader;
@@ -15,44 +16,31 @@ import org.springframework.batch.item.file.mapping.FieldSetMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.io.Resource;
 import org.springframework.util.StringUtils;
 
 @Slf4j
 @Configuration
+@RequiredArgsConstructor
 public class TransactionCsvReaderConfig {
 
-	private static final String DEFAULT_FILE_NAME = "transactions.csv";
-	private static final Path DEV_INPUT_DIRECTORY = Path.of("src/main/resources/input");
+	private final TransactionInputFileResolver inputFileResolver;
 
 	@Bean
 	@StepScope
 	public FlatFileItemReader<TransactionCsvDto> transactionCsvItemReader(
 			@Value("#{jobParameters['fileName']}") String fileName) {
-		String sourceFile = fileName == null || fileName.isBlank() ? DEFAULT_FILE_NAME : fileName;
-		Resource inputResource = resolveInputResource(sourceFile);
+		Path inputFile = inputFileResolver.resolveInputFile(fileName);
+		log.info("Reading transaction CSV from filesystem: {}.", inputFile.toAbsolutePath());
 
 		return new FlatFileItemReaderBuilder<TransactionCsvDto>()
 				.name("transactionCsvItemReader")
-				.resource(inputResource)
+				.resource(new FileSystemResource(inputFile))
 				.linesToSkip(1)
 				.delimited()
 				.names("transactionId", "accountNumber", "amount", "currency", "type", "transactionDate")
 				.fieldSetMapper(transactionFieldSetMapper())
 				.build();
-	}
-
-	private Resource resolveInputResource(String sourceFile) {
-		Path devInputFile = DEV_INPUT_DIRECTORY.resolve(sourceFile);
-		if (Files.isRegularFile(devInputFile)) {
-			log.info("Reading transaction CSV from filesystem: {}.", devInputFile.toAbsolutePath());
-			return new FileSystemResource(devInputFile);
-		}
-
-		log.info("Reading transaction CSV from classpath: input/{}.", sourceFile);
-		return new ClassPathResource("input/" + sourceFile);
 	}
 
 	private FieldSetMapper<TransactionCsvDto> transactionFieldSetMapper() {
